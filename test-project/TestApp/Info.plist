@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.example.testapp</string>
+	<key>CFBundleName</key>
+	<string>TestApp</string>
+	<key>CFBundleDisplayName</key>
+	<string>Test App</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>MinimumOSVersion</key>
+	<string>14.0</string>
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
+		<integer>2</integer>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs camera access.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>We need your location.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location is needed.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Microphone access required.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Access to contacts.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>location</string>
+		<string>voip</string>
+		<string>fetch</string>
+	</array>
+</dict>
+</plist>

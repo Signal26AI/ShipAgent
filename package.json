@@ -1,0 +1,46 @@
+{
+  "name": "shipagent",
+  "version": "0.1.0",
+  "description": "AI-powered App Store review agent — catch rejection risks before you submit",
+  "type": "module",
+  "bin": {
+    "shipagent": "./dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc && cp -r src/kb dist/kb",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js"
+  },
+  "keywords": [
+    "ios",
+    "app-store",
+    "review",
+    "apple",
+    "rejection",
+    "compliance",
+    "xcode"
+  ],
+  "author": "Signal26AI",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.81",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "fast-glob": "^3.3.3",
+    "ora": "^8.2.0",
+    "plist": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@types/plist": "^3.0.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

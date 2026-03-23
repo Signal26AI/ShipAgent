@@ -1,0 +1,414 @@
+{
+  "patterns": [
+    {
+      "id": "p-001",
+      "guideline": "2.1",
+      "title": "Placeholder Content",
+      "description": "App contains placeholder text, images, or Lorem Ipsum",
+      "detection": ["Look for 'Lorem ipsum', 'TODO', 'placeholder', 'test data', 'sample' in user-facing strings and Info.plist values"],
+      "fix": "Replace all placeholder content with final copy before submission.",
+      "example_before": "let welcomeText = \"Lorem ipsum dolor sit amet\"",
+      "example_after": "let welcomeText = \"Welcome to MyApp! Get started below.\"",
+      "severity": "high",
+      "frequency": 0.12
+    },
+    {
+      "id": "p-002",
+      "guideline": "2.1",
+      "title": "App Crashes on Launch",
+      "description": "App crashes during startup or within first interaction",
+      "detection": ["Check for force-unwrapped optionals in initialization code", "Look for missing required resources referenced at startup", "Check deployment target matches minimum supported device"],
+      "fix": "Test on physical devices with clean install. Use crash reporting tools.",
+      "severity": "high",
+      "frequency": 0.08
+    },
+    {
+      "id": "p-003",
+      "guideline": "2.1",
+      "title": "Broken Links or Features",
+      "description": "Non-functional buttons, dead links, or features that don't work",
+      "detection": ["Check for URLs in code/plist that may not resolve", "Look for stub/empty action handlers", "Check for features gated behind flags that may be disabled"],
+      "fix": "Test every link and button in the app. Remove or hide features that aren't ready.",
+      "severity": "high",
+      "frequency": 0.07
+    },
+    {
+      "id": "p-004",
+      "guideline": "2.1",
+      "title": "Missing Demo Credentials",
+      "description": "Login-required app without demo account in review notes",
+      "detection": ["Check if app has login screen or authentication flow", "Look for Auth/Login related code", "Verify if demo credentials are mentioned in App Store review notes"],
+      "fix": "Provide working demo credentials in App Review Information notes in App Store Connect.",
+      "severity": "high",
+      "frequency": 0.06
+    },
+    {
+      "id": "p-005",
+      "guideline": "5.1.1",
+      "title": "Missing Privacy Policy",
+      "description": "No privacy policy URL provided or URL is broken",
+      "detection": ["Check Info.plist for privacy policy URL", "Verify App Store Connect metadata includes privacy policy link"],
+      "fix": "Add a working privacy policy URL to both Info.plist and App Store Connect.",
+      "example_before": "<!-- No privacy policy URL in Info.plist -->",
+      "example_after": "<key>NSPrivacyPolicyURL</key>\n<string>https://example.com/privacy</string>",
+      "severity": "high",
+      "frequency": 0.15
+    },
+    {
+      "id": "p-006",
+      "guideline": "5.1.1",
+      "title": "Data Collection Without Disclosure",
+      "description": "App collects data not declared in privacy nutrition label or privacy manifest",
+      "detection": ["Look for analytics SDKs (Firebase, Mixpanel, Amplitude) in project", "Check if PrivacyInfo.xcprivacy exists and declares all tracking", "Compare declared data types vs SDK capabilities"],
+      "fix": "Update your App Store Connect privacy nutrition label and PrivacyInfo.xcprivacy to declare all data types collected.",
+      "severity": "high",
+      "frequency": 0.14
+    },
+    {
+      "id": "p-007",
+      "guideline": "5.1.2(i)",
+      "title": "Missing Privacy Manifest",
+      "description": "App lacks PrivacyInfo.xcprivacy file required since iOS 17",
+      "detection": ["Check for PrivacyInfo.xcprivacy in project root", "Look for required reason APIs (UserDefaults, fileTimestamp, diskSpace, etc.) that mandate the manifest"],
+      "fix": "Create a PrivacyInfo.xcprivacy file declaring your privacy practices and required reason API usage.",
+      "severity": "high",
+      "frequency": 0.13
+    },
+    {
+      "id": "p-008",
+      "guideline": "5.1.1",
+      "title": "Vague Permission Usage Strings",
+      "description": "NSUsageDescription strings are generic or don't explain why the permission is needed",
+      "detection": ["Check Info.plist for NS*UsageDescription keys", "Flag generic strings like 'This app needs access to your camera'", "Check if usage strings explain the specific feature"],
+      "fix": "Write specific usage descriptions that explain exactly why your app needs each permission and what feature uses it.",
+      "example_before": "<key>NSCameraUsageDescription</key>\n<string>This app needs camera access.</string>",
+      "example_after": "<key>NSCameraUsageDescription</key>\n<string>Take photos to add to your meal diary and track your nutrition progress.</string>",
+      "severity": "medium",
+      "frequency": 0.10
+    },
+    {
+      "id": "p-009",
+      "guideline": "5.1.1",
+      "title": "Unused Permission Requests",
+      "description": "App requests permissions it doesn't visibly use",
+      "detection": ["Check Info.plist for permission keys (NSCameraUsageDescription, NSLocationWhenInUseUsageDescription, etc.)", "Verify each permission has a visible corresponding feature", "Flag permissions that seem unrelated to app's purpose"],
+      "fix": "Remove permission requests that aren't necessary for your app's core functionality.",
+      "severity": "medium",
+      "frequency": 0.08
+    },
+    {
+      "id": "p-010",
+      "guideline": "2.3",
+      "title": "Screenshots Don't Match App",
+      "description": "App Store screenshots show features or UI that don't exist in the app",
+      "detection": ["Compare App Store description claims vs actual feature set", "Check for marketing copy that overpromises"],
+      "fix": "Update screenshots and descriptions to accurately reflect the current app experience.",
+      "severity": "high",
+      "frequency": 0.09
+    },
+    {
+      "id": "p-011",
+      "guideline": "2.3.7",
+      "title": "References to Other Platforms",
+      "description": "App or metadata mentions Android, Google Play, Windows, or other platforms",
+      "detection": ["Search strings, descriptions, and UI for 'Android', 'Google Play', 'Windows Phone', 'Amazon'", "Check in-app text and onboarding flows"],
+      "fix": "Remove all references to competing platforms from your app and metadata.",
+      "severity": "medium",
+      "frequency": 0.05
+    },
+    {
+      "id": "p-012",
+      "guideline": "3.1.1",
+      "title": "Missing In-App Purchase",
+      "description": "App offers digital content/features purchasable outside of Apple's IAP system",
+      "detection": ["Look for external payment SDKs (Stripe, PayPal) for digital goods", "Check for links to external purchase pages for premium features", "Verify physical goods vs digital goods classification"],
+      "fix": "All digital content and feature unlocks must use Apple's In-App Purchase system.",
+      "severity": "high",
+      "frequency": 0.08
+    },
+    {
+      "id": "p-013",
+      "guideline": "3.1.1",
+      "title": "No Restore Purchases",
+      "description": "App with IAP missing a 'Restore Purchases' button",
+      "detection": ["Check if app has In-App Purchases", "Look for restore purchase functionality", "Verify presence of restore button in settings or purchase screens"],
+      "fix": "Add a clearly visible 'Restore Purchases' button accessible from your app's settings or purchase screen.",
+      "severity": "high",
+      "frequency": 0.07
+    },
+    {
+      "id": "p-014",
+      "guideline": "3.1.2",
+      "title": "Unclear Subscription Terms",
+      "description": "Auto-renewable subscription pricing, renewal terms, or cancellation instructions not clearly disclosed",
+      "detection": ["Check for subscription-related code", "Look for subscription disclosure text near purchase buttons", "Verify trial period disclosures"],
+      "fix": "Clearly display subscription price, renewal period, and free trial length before the purchase button. Include a link to manage subscriptions.",
+      "severity": "high",
+      "frequency": 0.09
+    },
+    {
+      "id": "p-015",
+      "guideline": "5.3.4",
+      "title": "Missing Sign in with Apple",
+      "description": "App uses third-party login (Google, Facebook, etc.) without offering Sign in with Apple",
+      "detection": ["Check for third-party auth SDKs (Google Sign-In, Facebook Login, etc.)", "Look for login UI with social login buttons", "Verify if Sign in with Apple capability is in entitlements"],
+      "fix": "If your app offers third-party login options, you must also offer Sign in with Apple as an equivalent option.",
+      "severity": "high",
+      "frequency": 0.07
+    },
+    {
+      "id": "p-016",
+      "guideline": "5.6.1",
+      "title": "Missing App Tracking Transparency",
+      "description": "App uses IDFA or tracking SDKs without ATT prompt",
+      "detection": ["Check for AdSupport framework", "Look for tracking SDKs (Facebook SDK, Google Ads, etc.)", "Verify ATT framework usage in Info.plist (NSUserTrackingUsageDescription)"],
+      "fix": "Implement AppTrackingTransparency framework and request permission before any tracking.",
+      "example_before": "<!-- Using AdSupport without ATT -->",
+      "example_after": "<key>NSUserTrackingUsageDescription</key>\n<string>We use this to deliver personalized ads that match your interests.</string>",
+      "severity": "high",
+      "frequency": 0.06
+    },
+    {
+      "id": "p-017",
+      "guideline": "4.3",
+      "title": "Design Spam / Low Quality",
+      "description": "App is too similar to existing apps or provides minimal unique value",
+      "detection": ["Check if app is essentially a web wrapper (WKWebView-heavy)", "Look for very minimal native UI", "Verify the app provides functionality beyond a website"],
+      "fix": "Ensure your app provides unique value and native functionality that goes beyond what a mobile website offers.",
+      "severity": "medium",
+      "frequency": 0.06
+    },
+    {
+      "id": "p-018",
+      "guideline": "4.2",
+      "title": "Minimum Functionality",
+      "description": "App doesn't have enough features to qualify as a standalone app",
+      "detection": ["Evaluate if app is essentially a single web view", "Check if app is a thin wrapper around a website", "Verify app has native navigation and features"],
+      "fix": "Add enough native functionality that your app stands on its own as a proper iOS app, not just a web bookmark.",
+      "severity": "medium",
+      "frequency": 0.05
+    },
+    {
+      "id": "p-019",
+      "guideline": "2.5.1",
+      "title": "Private API Usage",
+      "description": "App uses private or undocumented Apple APIs",
+      "detection": ["Check for method swizzling of system classes", "Look for use of underscore-prefixed APIs", "Check linked frameworks for private frameworks"],
+      "fix": "Replace all private API usage with public API equivalents. Apple frequently rejects apps using undocumented APIs.",
+      "severity": "high",
+      "frequency": 0.04
+    },
+    {
+      "id": "p-020",
+      "guideline": "2.5.4",
+      "title": "Improper Background Mode Usage",
+      "description": "App declares background modes it doesn't legitimately use",
+      "detection": ["Check Info.plist UIBackgroundModes array", "Verify each declared mode is actually used (audio, location, voip, fetch, remote-notification, bluetooth, etc.)", "Flag background modes that don't match app's purpose"],
+      "fix": "Remove background mode declarations that your app doesn't legitimately use. Apple verifies these.",
+      "example_before": "<key>UIBackgroundModes</key>\n<array>\n  <string>audio</string>\n  <string>location</string>\n  <string>voip</string>\n</array>",
+      "example_after": "<key>UIBackgroundModes</key>\n<array>\n  <string>audio</string>\n</array>",
+      "severity": "high",
+      "frequency": 0.05
+    },
+    {
+      "id": "p-021",
+      "guideline": "1.2",
+      "title": "Missing Content Moderation",
+      "description": "App with user-generated content lacks reporting/blocking features",
+      "detection": ["Check for UGC features (chat, posts, comments, photos)", "Verify report/flag mechanism exists", "Look for user blocking capability"],
+      "fix": "Implement content reporting, user blocking, and content filtering for any user-generated content features.",
+      "severity": "high",
+      "frequency": 0.05
+    },
+    {
+      "id": "p-022",
+      "guideline": "2.3",
+      "title": "Misleading App Description",
+      "description": "App Store description doesn't accurately describe what the app does",
+      "detection": ["Compare stated features in description vs actual capabilities", "Check for exaggerated claims"],
+      "fix": "Update your App Store description to accurately and honestly describe your app's features.",
+      "severity": "medium",
+      "frequency": 0.06
+    },
+    {
+      "id": "p-023",
+      "guideline": "5.1.1",
+      "title": "Missing Location Usage Justification",
+      "description": "App requests location access without clear justification for the specific permission level",
+      "detection": ["Check for NSLocationAlwaysUsageDescription vs NSLocationWhenInUseUsageDescription", "Verify 'Always' location isn't requested when 'When in Use' would suffice", "Check if background location is declared but not essential"],
+      "fix": "Use the minimum location permission level needed. Provide clear justification for 'Always' access if required.",
+      "severity": "medium",
+      "frequency": 0.06
+    },
+    {
+      "id": "p-024",
+      "guideline": "2.1",
+      "title": "IPv6 Incompatibility",
+      "description": "App doesn't work on IPv6-only networks (Apple tests on IPv6)",
+      "detection": ["Check for hardcoded IPv4 addresses in code/config", "Look for direct socket connections that may not support IPv6", "Verify use of higher-level networking APIs (URLSession) vs raw sockets"],
+      "fix": "Use high-level networking APIs (URLSession, Network.framework) that handle IPv6 automatically. Don't hardcode IP addresses.",
+      "severity": "medium",
+      "frequency": 0.04
+    },
+    {
+      "id": "p-025",
+      "guideline": "4.0",
+      "title": "Missing iPad Support or Poor Layout",
+      "description": "Universal app has broken layout on iPad or doesn't support all orientations properly",
+      "detection": ["Check Info.plist for device family support (UIDeviceFamily)", "Look for iPad-specific layout constraints or size classes", "Check UISupportedInterfaceOrientations for iPad"],
+      "fix": "If your app claims Universal support, ensure it works properly on iPad with appropriate layouts.",
+      "severity": "medium",
+      "frequency": 0.05
+    },
+    {
+      "id": "p-026",
+      "guideline": "3.2.2",
+      "title": "App is Primarily Marketing Material",
+      "description": "App is essentially an advertisement or marketing brochure",
+      "detection": ["Check if app primarily displays company info/promotional content", "Look for minimal interactivity", "Verify app has core functionality beyond marketing"],
+      "fix": "Ensure your app provides genuine utility or entertainment beyond promoting your brand or services.",
+      "severity": "medium",
+      "frequency": 0.03
+    },
+    {
+      "id": "p-027",
+      "guideline": "2.1",
+      "title": "Missing Required Icons",
+      "description": "App icon missing for required sizes or doesn't follow Apple's icon guidelines",
+      "detection": ["Check Assets.xcassets for AppIcon set", "Verify all required icon sizes are present", "Check for transparency in icons (not allowed)"],
+      "fix": "Provide app icons at all required sizes. Icons must not have transparency or alpha channels.",
+      "severity": "medium",
+      "frequency": 0.04
+    },
+    {
+      "id": "p-028",
+      "guideline": "5.1.1",
+      "title": "Contacts Access Without Clear Need",
+      "description": "App requests contacts permission without obvious feature requiring it",
+      "detection": ["Check for NSContactsUsageDescription in Info.plist", "Verify app has a clear contacts-related feature", "Flag if contacts permission seems unrelated to app purpose"],
+      "fix": "Remove contacts permission if not essential. If needed, clearly explain the specific feature that requires it.",
+      "severity": "medium",
+      "frequency": 0.04
+    },
+    {
+      "id": "p-029",
+      "guideline": "5.2.1",
+      "title": "Copyright/Trademark Infringement",
+      "description": "App uses copyrighted material, trademarks, or brand names without permission",
+      "detection": ["Check app name and description for trademark terms", "Look for third-party brand logos/images", "Verify licensing for any third-party content"],
+      "fix": "Remove all unauthorized use of trademarks, copyrighted material, and brand assets. Get written permission for any third-party content.",
+      "severity": "high",
+      "frequency": 0.04
+    },
+    {
+      "id": "p-030",
+      "guideline": "2.1",
+      "title": "Deprecated APIs or Frameworks",
+      "description": "App uses deprecated APIs that may cause issues or future incompatibility",
+      "detection": ["Check deployment target vs SDK version", "Look for usage of deprecated frameworks (UIWebView, AddressBook, etc.)", "Check for build warnings about deprecations"],
+      "fix": "Replace deprecated APIs: UIWebView → WKWebView, AddressBook → Contacts framework, etc.",
+      "severity": "medium",
+      "frequency": 0.04
+    },
+    {
+      "id": "p-031",
+      "guideline": "5.1.1",
+      "title": "Missing Required Reason API Declaration",
+      "description": "App uses required reason APIs without declaring them in privacy manifest",
+      "detection": ["Check for usage of UserDefaults, fileTimestamp, diskSpace, systemBootTime APIs", "Verify these are declared in PrivacyInfo.xcprivacy with approved reasons"],
+      "fix": "Add required reason declarations to your PrivacyInfo.xcprivacy for all required reason APIs your app uses.",
+      "severity": "high",
+      "frequency": 0.08
+    },
+    {
+      "id": "p-032",
+      "guideline": "2.1",
+      "title": "Missing Push Notification Entitlement",
+      "description": "App references push notifications but lacks the push entitlement",
+      "detection": ["Check for push notification code (UNUserNotificationCenter)", "Verify aps-environment entitlement in .entitlements file", "Check if push notification capability is enabled in entitlements"],
+      "fix": "Enable Push Notifications capability in Xcode and ensure your entitlements file includes the aps-environment key.",
+      "severity": "high",
+      "frequency": 0.03
+    },
+    {
+      "id": "p-033",
+      "guideline": "3.1.1",
+      "title": "External Payment Links for Digital Goods",
+      "description": "App links to external website for purchasing digital content",
+      "detection": ["Check for URLs that lead to payment pages", "Look for 'subscribe', 'upgrade', 'premium' text linked to external URLs", "Verify digital vs physical goods classification"],
+      "fix": "Digital goods and subscriptions must use Apple's In-App Purchase. External links for digital purchases will be rejected.",
+      "severity": "high",
+      "frequency": 0.05
+    },
+    {
+      "id": "p-034",
+      "guideline": "5.1.1",
+      "title": "Photo Library Access Without Purpose",
+      "description": "App requests photo library access without a clear user-facing feature",
+      "detection": ["Check for NSPhotoLibraryUsageDescription in Info.plist", "Verify the usage string explains the specific feature", "Flag if photo access seems unrelated to app purpose"],
+      "fix": "Only request photo library access if your app has a clear feature requiring it. Use PHPickerViewController for limited access when possible.",
+      "severity": "medium",
+      "frequency": 0.04
+    },
+    {
+      "id": "p-035",
+      "guideline": "2.1",
+      "title": "Missing Age Rating Configuration",
+      "description": "App doesn't properly configure age rating or content is inappropriate for selected rating",
+      "detection": ["Check Info.plist for content rating keys", "Compare app content with declared age rating", "Look for mature content in apps rated 4+"],
+      "fix": "Set the correct age rating in App Store Connect that matches your app's actual content.",
+      "severity": "medium",
+      "frequency": 0.03
+    },
+    {
+      "id": "p-036",
+      "guideline": "5.1.1",
+      "title": "Microphone Access Without Justification",
+      "description": "App requests microphone permission without clear audio-related feature",
+      "detection": ["Check for NSMicrophoneUsageDescription in Info.plist", "Verify app has audio recording, voice chat, or similar feature", "Flag if microphone seems unrelated to app purpose"],
+      "fix": "Only request microphone access for features that genuinely require audio input. Explain the specific use case.",
+      "severity": "medium",
+      "frequency": 0.03
+    },
+    {
+      "id": "p-037",
+      "guideline": "5.1.1",
+      "title": "Bluetooth Usage Without Explanation",
+      "description": "App requests Bluetooth permission without clear peripheral interaction",
+      "detection": ["Check for NSBluetoothAlwaysUsageDescription in Info.plist", "Verify app actually interacts with Bluetooth peripherals"],
+      "fix": "Only request Bluetooth access if your app connects to Bluetooth devices. Clearly explain which devices.",
+      "severity": "medium",
+      "frequency": 0.02
+    },
+    {
+      "id": "p-038",
+      "guideline": "4.0",
+      "title": "Non-Standard UI Patterns",
+      "description": "App uses non-standard navigation or UI that confuses users",
+      "detection": ["Check for custom navigation that differs from iOS conventions", "Look for non-standard gesture handlers that may conflict with system gestures"],
+      "fix": "Follow Apple's Human Interface Guidelines for navigation patterns and standard UI components.",
+      "severity": "medium",
+      "frequency": 0.03
+    },
+    {
+      "id": "p-039",
+      "guideline": "2.1",
+      "title": "Minimum Deployment Target Too Low",
+      "description": "App targets a very old iOS version that may not be testable",
+      "detection": ["Check MinimumOSVersion in Info.plist", "Check IPHONEOS_DEPLOYMENT_TARGET in project.pbxproj", "Flag if targeting iOS versions below 15"],
+      "fix": "Update your minimum deployment target to a recent iOS version (iOS 16+ recommended as of 2026).",
+      "severity": "low",
+      "frequency": 0.02
+    },
+    {
+      "id": "p-040",
+      "guideline": "5.1.1",
+      "title": "HealthKit Usage Without Privacy Safeguards",
+      "description": "App uses HealthKit but doesn't properly protect health data",
+      "detection": ["Check for HealthKit entitlement", "Verify NSHealthShareUsageDescription and NSHealthUpdateUsageDescription", "Check privacy policy covers health data"],
+      "fix": "Ensure health data is handled with appropriate safeguards and clearly declared in your privacy policy.",
+      "severity": "high",
+      "frequency": 0.02
+    }
+  ]
+}

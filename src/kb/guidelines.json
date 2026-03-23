@@ -1,0 +1,137 @@
+{
+  "version": "2026.03",
+  "guidelines": [
+    {
+      "id": "1.1",
+      "title": "App Completeness",
+      "category": "safety",
+      "text": "Apps must be complete and fully functional when submitted. Submissions should be final versions with all necessary metadata."
+    },
+    {
+      "id": "1.2",
+      "title": "User-Generated Content",
+      "category": "safety",
+      "text": "Apps with user-generated content must include content filtering, a mechanism to report offensive content, and the ability to block abusive users."
+    },
+    {
+      "id": "2.1",
+      "title": "App Completeness",
+      "category": "performance",
+      "text": "Submissions to App Review should be final versions with complete metadata. Do not include placeholder content, broken links, or test data."
+    },
+    {
+      "id": "2.3",
+      "title": "Accurate Metadata",
+      "category": "performance",
+      "text": "App descriptions, screenshots, and previews must accurately reflect the app's core experience. Do not include content that is not relevant."
+    },
+    {
+      "id": "2.3.7",
+      "title": "No Platform References",
+      "category": "performance",
+      "text": "Apps and metadata should not reference other mobile platforms (Android, Windows, etc.)."
+    },
+    {
+      "id": "2.5.1",
+      "title": "Software Requirements",
+      "category": "performance",
+      "text": "Apps may only use public APIs. Use of private or undocumented APIs will result in rejection."
+    },
+    {
+      "id": "2.5.4",
+      "title": "Background Execution",
+      "category": "performance",
+      "text": "Multitasking apps may only use background services for their intended purposes: VoIP, audio playback, location, task completion, local notifications, etc."
+    },
+    {
+      "id": "3.1.1",
+      "title": "In-App Purchase",
+      "category": "business",
+      "text": "Apps offering digital content or services must use in-app purchase. Apps may not use their own mechanisms to unlock features or functionality."
+    },
+    {
+      "id": "3.1.2",
+      "title": "Subscriptions",
+      "category": "business",
+      "text": "Subscriptions must clearly disclose the price, payment frequency, and length of subscription terms. Auto-renewable subscriptions must provide a clear explanation of what the user gets."
+    },
+    {
+      "id": "3.2.2",
+      "title": "Unacceptable Business Model",
+      "category": "business",
+      "text": "Apps that are primarily marketing materials, ads, or web clippings will be rejected."
+    },
+    {
+      "id": "4.0",
+      "title": "Design",
+      "category": "design",
+      "text": "Apple places high value on well-designed apps. Apps should follow the Human Interface Guidelines and provide a high-quality user experience."
+    },
+    {
+      "id": "4.1",
+      "title": "Copycats",
+      "category": "design",
+      "text": "Apps that duplicate another app (including Apple's built-in apps) may be removed. Bring unique value."
+    },
+    {
+      "id": "4.2",
+      "title": "Minimum Functionality",
+      "category": "design",
+      "text": "Your app should include sufficient content and features so it functions as an app, not a repackaged website."
+    },
+    {
+      "id": "4.3",
+      "title": "Design Spam",
+      "category": "design",
+      "text": "Apps that are duplicates of existing apps, or that provide minimal unique value, may be rejected."
+    },
+    {
+      "id": "5.1.1",
+      "title": "Data Collection and Storage",
+      "category": "privacy",
+      "text": "Apps must comply with all applicable privacy laws. Apps that collect user data must have a privacy policy and must obtain user consent."
+    },
+    {
+      "id": "5.1.2",
+      "title": "Data Use and Sharing",
+      "category": "privacy",
+      "text": "Apps must not use or transmit personal data without user consent. Data collected for one purpose may not be repurposed without consent."
+    },
+    {
+      "id": "5.1.1(i)",
+      "title": "Privacy Policy Requirement",
+      "category": "privacy",
+      "text": "All apps must include a link to their privacy policy in the App Store Connect metadata and within the app."
+    },
+    {
+      "id": "5.1.2(i)",
+      "title": "Privacy Manifest",
+      "category": "privacy",
+      "text": "Apps must include a privacy manifest (PrivacyInfo.xcprivacy) declaring their data collection practices and required reason APIs."
+    },
+    {
+      "id": "5.2.1",
+      "title": "Intellectual Property - General",
+      "category": "legal",
+      "text": "Don't use protected third-party material such as trademarks, copyrighted works, or patented ideas without permission."
+    },
+    {
+      "id": "5.3.4",
+      "title": "Sign in with Apple",
+      "category": "privacy",
+      "text": "Apps that exclusively use a third-party login service must also offer Sign in with Apple as an equivalent option."
+    },
+    {
+      "id": "5.4",
+      "title": "Apple Pay",
+      "category": "privacy",
+      "text": "Apps using Apple Pay must do so in accordance with Apple Pay guidelines and must not attempt to circumvent Apple Pay restrictions."
+    },
+    {
+      "id": "5.6.1",
+      "title": "App Tracking Transparency",
+      "category": "privacy",
+      "text": "Apps must use the AppTrackingTransparency framework to request user permission before tracking. Use of IDFA requires ATT prompt."
+    }
+  ]
+}
