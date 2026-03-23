@@ -13,7 +13,9 @@
   "scripts": {
     "build": "tsc && cp -r src/kb dist/kb",
     "dev": "tsx src/cli.ts",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "ios",
@@ -38,7 +40,8 @@
     "@types/node": "^22.13.0",
     "@types/plist": "^3.0.5",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.1"
   },
   "engines": {
     "node": ">=18"
