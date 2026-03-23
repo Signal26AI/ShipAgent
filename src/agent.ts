@@ -60,6 +60,156 @@ Be thorough. Check EVERY relevant guideline. If something looks fine, include it
 Do NOT make up issues — only flag things you can verify from the project files.`;
 }
 
+export async function runTargetedReview(
+  metadata: ProjectMetadata,
+  flaggedGuidelines: string[],
+  apiKey: string,
+): Promise<Finding[]> {
+  const projectInfo = formatMetadataForAgent(metadata);
+  const guidelineList = flaggedGuidelines.join(", ");
+
+  const targetedSystemPrompt = `You are ShipAgent, an expert iOS App Store review analyzer.
+
+You are performing a TARGETED re-review. Only check the following specific guidelines: ${guidelineList}
+
+Do NOT perform a full scan. Only verify whether the previously flagged issues have been fixed.
+
+## Scoring Guidelines
+- 🔴 HIGH RISK (severity "high", confidence 80-100%): Pattern clearly matches a known rejection case
+- 🟡 MEDIUM RISK (severity "medium", confidence 40-79%): Potential issue, similar to rejection patterns
+- 🟢 PASSED (severity "pass", confidence 0-39%): Issue has been fixed or no longer present
+
+## Output Format
+After checking each flagged guideline, output ONLY a JSON code block:
+\`\`\`json
+{
+  "findings": [
+    {
+      "guideline": "5.1.1",
+      "title": "Missing Privacy Manifest",
+      "severity": "pass",
+      "confidence": 10,
+      "issue": "Privacy manifest is now present",
+      "fix": "No action needed"
+    }
+  ]
+}
+\`\`\`
+
+Only include findings for the guidelines listed above. Be precise — check if the specific issues were actually resolved.`;
+
+  // Reuse same MCP tools as full review (read-only)
+  const readProjectFile = tool(
+    "read_project_file",
+    "Read the contents of a file from the iOS project being reviewed. Use relative paths from the project root.",
+    { file_path: z.string().describe("Path to the file relative to the project root") },
+    async (args) => {
+      const fullPath = path.resolve(metadata.projectPath, args.file_path);
+      if (!fullPath.startsWith(metadata.projectPath)) {
+        return { content: [{ type: "text" as const, text: "Error: Path is outside the project directory" }] };
+      }
+      try {
+        const content = fs.readFileSync(fullPath, "utf-8");
+        const truncated = content.length > 50000 ? content.slice(0, 50000) + "\n[...truncated]" : content;
+        return { content: [{ type: "text" as const, text: truncated }] };
+      } catch (e) {
+        return { content: [{ type: "text" as const, text: `Error reading file: ${(e as Error).message}` }] };
+      }
+    },
+  );
+
+  const queryKb = tool(
+    "query_kb",
+    "Query the rejection knowledge base for known patterns. Search by guideline ID or keyword.",
+    {
+      guideline_id: z.string().optional().describe("Guideline ID to look up"),
+      keyword: z.string().optional().describe("Keyword to search patterns"),
+    },
+    async (args) => {
+      let results: unknown[] = [];
+      if (args.guideline_id) {
+        const gid = args.guideline_id;
+        const matchingGuidelines = guidelines.guidelines.filter(
+          (g: { id: string }) => g.id === gid || g.id.startsWith(gid),
+        );
+        const matchingPatterns = patterns.patterns.filter(
+          (p: { guideline: string }) => p.guideline === gid || p.guideline.startsWith(gid),
+        );
+        results = [...matchingGuidelines.map((g: unknown) => ({ type: "guideline", ...g as object })), ...matchingPatterns.map((p: unknown) => ({ type: "pattern", ...p as object }))];
+      }
+      if (args.keyword) {
+        const kw = args.keyword.toLowerCase();
+        const kwGuidelines = guidelines.guidelines.filter(
+          (g: { title: string; text: string; category: string }) =>
+            g.title.toLowerCase().includes(kw) || g.text.toLowerCase().includes(kw) || g.category.toLowerCase().includes(kw),
+        );
+        const kwPatterns = patterns.patterns.filter(
+          (p: { title: string; description: string }) =>
+            p.title.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw),
+        );
+        results = [...results, ...kwGuidelines.map((g: unknown) => ({ type: "guideline", ...g as object })), ...kwPatterns.map((p: unknown) => ({ type: "pattern", ...p as object }))];
+      }
+      if (results.length === 0) {
+        return { content: [{ type: "text" as const, text: "No matching guidelines or patterns found." }] };
+      }
+      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
+    },
+  );
+
+  const mcpServer = createSdkMcpServer({
+    name: "shipagent-tools",
+    version: "0.1.0",
+    tools: [readProjectFile, queryKb],
+  });
+
+  const prompt = `Perform a TARGETED re-review of this iOS project. Only check these guidelines: ${guidelineList}
+
+## Project Metadata
+${projectInfo}
+
+## Available Source Files
+${metadata.sourceFiles.slice(0, 50).join("\n")}
+
+Check ONLY the listed guidelines. Verify whether previous issues have been fixed.`;
+
+  const conversation = query({
+    prompt,
+    options: {
+      model: "claude-sonnet-4-20250514",
+      systemPrompt: targetedSystemPrompt,
+      cwd: metadata.projectPath,
+      maxTurns: 10,
+      tools: [],
+      mcpServers: { "shipagent-tools": mcpServer },
+      allowedTools: ["mcp__shipagent-tools__read_project_file", "mcp__shipagent-tools__query_kb"],
+      permissionMode: "bypassPermissions",
+      allowDangerouslySkipPermissions: true,
+      env: {
+        ...process.env as Record<string, string>,
+        ANTHROPIC_API_KEY: apiKey,
+      },
+      persistSession: false,
+    },
+  });
+
+  let lastAssistantText = "";
+  for await (const message of conversation) {
+    if (message.type === "assistant" && "message" in message) {
+      const msg = message.message as { content?: Array<{ type: string; text?: string }> };
+      if (msg.content) {
+        for (const block of msg.content) {
+          if (block.type === "text" && block.text) {
+            lastAssistantText = block.text;
+          }
+        }
+      }
+    }
+  }
+
+  const { parseAgentFindings } = await import("./report.js");
+  return parseAgentFindings(lastAssistantText);
+}
+
 export async function runReview(
   metadata: ProjectMetadata,
   apiKey: string,
