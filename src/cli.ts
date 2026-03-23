@@ -5,7 +5,6 @@ import chalk from "chalk";
 import ora from "ora";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { readProject } from "./reader.js";
 import { runReview } from "./agent.js";
 import { runFix } from "./fix.js";
 import { formatReport } from "./report.js";
@@ -40,30 +39,17 @@ program
       process.exit(1);
     }
 
+    const projectName = path.basename(resolvedPath);
+
     console.log("");
     console.log(chalk.bold.cyan("⚓ ShipAgent") + chalk.dim(" — App Store Review Agent"));
     console.log("");
 
-    // Step 1: Read project
-    const readSpinner = ora("Reading project files...").start();
-    let metadata;
-    try {
-      metadata = readProject(resolvedPath);
-      readSpinner.succeed(
-        `Found project: ${chalk.bold(metadata.projectName)}` +
-          (metadata.bundleId ? ` (${metadata.bundleId})` : "") +
-          ` — ${metadata.sourceFiles.length} source files`,
-      );
-    } catch (e) {
-      readSpinner.fail(`Failed to read project: ${(e as Error).message}`);
-      process.exit(1);
-    }
-
-    // Step 2: Run agent review
+    // Run agent review (ShipLint scan happens inside the agent)
     const reviewSpinner = ora("Running AI review agent (this may take 1-2 minutes)...").start();
     let findings;
     try {
-      findings = await runReview(metadata, apiKey);
+      findings = await runReview(resolvedPath, apiKey);
       reviewSpinner.succeed(`Analysis complete — ${findings.length} findings`);
     } catch (e) {
       reviewSpinner.fail(`Review failed: ${(e as Error).message}`);
@@ -73,15 +59,15 @@ program
       process.exit(1);
     }
 
-    // Step 2.5: Save review state
+    // Save review state
     saveReview(resolvedPath, findings);
 
-    // Step 3: Format and display report
+    // Format and display report
     if (options.json) {
       console.log(JSON.stringify(findings, null, 2));
     } else {
       const report: ReviewReport = {
-        projectName: metadata.projectName,
+        projectName,
         findings,
         summary: "",
         timestamp: new Date().toISOString(),
@@ -125,24 +111,16 @@ program
       process.exit(0);
     }
 
+    const projectName = path.basename(resolvedPath);
+
     console.log("");
     console.log(chalk.bold.cyan("⚓ ShipAgent") + chalk.bold.white(" — Fix Mode"));
     console.log(chalk.dim(`  Fixing ${actionable.length} issue(s) from review at ${lastReview.timestamp}`));
     console.log("");
 
-    const readSpinner = ora("Reading project files...").start();
-    let metadata;
-    try {
-      metadata = readProject(resolvedPath);
-      readSpinner.succeed(`Project: ${chalk.bold(metadata.projectName)}`);
-    } catch (e) {
-      readSpinner.fail(`Failed to read project: ${(e as Error).message}`);
-      process.exit(1);
-    }
-
     const fixSpinner = ora("Applying fixes...").start();
     try {
-      const fixResult = await runFix(metadata, actionable, apiKey);
+      const fixResult = await runFix(resolvedPath, actionable, apiKey);
       fixSpinner.succeed(`Applied ${fixResult.fixes.length} fix(es), skipped ${fixResult.skipped.length}`);
 
       // Display results

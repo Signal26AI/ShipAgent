@@ -1,15 +1,38 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execSync } from "node:child_process";
 import { query, tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod/v4";
-import type { ProjectMetadata } from "./reader.js";
 import type { Finding } from "./report.js";
-import { formatMetadataForAgent } from "./reader.js";
 
 // Load KB data
 const kbDir = path.join(import.meta.dirname, "kb");
 const guidelines = JSON.parse(fs.readFileSync(path.join(kbDir, "guidelines.json"), "utf-8"));
 const patterns = JSON.parse(fs.readFileSync(path.join(kbDir, "patterns.json"), "utf-8"));
+
+/**
+ * Run ShipLint scan on a project path. Returns structured JSON output or an error message.
+ */
+export function runShiplintScan(projectPath: string): { ok: true; output: string } | { ok: false; error: string } {
+  try {
+    const result = execSync(`npx shiplint scan -f json "${projectPath}" 2>&1`, {
+      timeout: 60000,
+      encoding: "utf-8",
+    });
+    return { ok: true, output: result };
+  } catch (e) {
+    const msg = (e as Error).message || "";
+    if (msg.includes("not found") || msg.includes("ERR_MODULE_NOT_FOUND") || msg.includes("command not found")) {
+      return { ok: false, error: "ShipLint not found. Install with: npm install -g shiplint" };
+    }
+    // ShipLint ran but exited non-zero (e.g., findings found) — still has output
+    const stderr = (e as { stdout?: string }).stdout;
+    if (stderr) {
+      return { ok: true, output: stderr };
+    }
+    return { ok: false, error: `ShipLint scan failed: ${msg}` };
+  }
+}
 
 function buildSystemPrompt(): string {
   return `You are ShipAgent, an expert iOS App Store review analyzer.
@@ -17,11 +40,12 @@ function buildSystemPrompt(): string {
 Your goal: Identify App Store rejection risks in this iOS project before submission.
 
 ## Process
-1. Examine the project metadata provided to you
-2. Use the read_project_file tool to inspect specific source files for deeper analysis
-3. Use the query_kb tool to look up known rejection patterns by guideline ID
-4. Cross-reference your findings against Apple's App Store Review Guidelines
-5. Return your findings as a structured JSON report
+1. First run ShipLint to get a structured scan of the project — this handles Info.plist parsing, permissions, entitlements, privacy manifest, and static rule checks
+2. Review ShipLint's findings carefully
+3. Use read_project_file for deeper analysis (app description, source code for subjective checks like 4.3 spam assessment)
+4. Use query_kb to look up known rejection patterns by guideline ID
+5. Cross-reference your findings against Apple's App Store Review Guidelines
+6. Return your findings as a structured JSON report
 
 ## Scoring Guidelines
 - 🔴 HIGH RISK (severity "high", confidence 80-100%): Pattern clearly matches a known rejection case
@@ -60,12 +84,108 @@ Be thorough. Check EVERY relevant guideline. If something looks fine, include it
 Do NOT make up issues — only flag things you can verify from the project files.`;
 }
 
+function createReadProjectFileTool(projectPath: string) {
+  return tool(
+    "read_project_file",
+    "Read the contents of a file from the iOS project being reviewed. Use relative paths from the project root.",
+    { file_path: z.string().describe("Path to the file relative to the project root") },
+    async (args) => {
+      const fullPath = path.resolve(projectPath, args.file_path);
+      if (!fullPath.startsWith(projectPath)) {
+        return { content: [{ type: "text" as const, text: "Error: Path is outside the project directory" }] };
+      }
+      try {
+        const content = fs.readFileSync(fullPath, "utf-8");
+        const truncated = content.length > 50000 ? content.slice(0, 50000) + "\n[...truncated]" : content;
+        return { content: [{ type: "text" as const, text: truncated }] };
+      } catch (e) {
+        return { content: [{ type: "text" as const, text: `Error reading file: ${(e as Error).message}` }] };
+      }
+    },
+  );
+}
+
+function createQueryKbTool() {
+  return tool(
+    "query_kb",
+    "Query the rejection knowledge base for known patterns. Search by guideline ID (e.g. '5.1.1') or keyword.",
+    {
+      guideline_id: z.string().optional().describe("Guideline ID to look up (e.g. '2.1', '5.1.1')"),
+      keyword: z.string().optional().describe("Keyword to search patterns (e.g. 'privacy', 'payment')"),
+    },
+    async (args) => {
+      let results: unknown[] = [];
+
+      if (args.guideline_id) {
+        const gid = args.guideline_id;
+        const matchingGuidelines = guidelines.guidelines.filter(
+          (g: { id: string }) => g.id === gid || g.id.startsWith(gid),
+        );
+        const matchingPatterns = patterns.patterns.filter(
+          (p: { guideline: string }) => p.guideline === gid || p.guideline.startsWith(gid),
+        );
+        results = [
+          ...matchingGuidelines.map((g: unknown) => ({ type: "guideline", ...g as object })),
+          ...matchingPatterns.map((p: unknown) => ({ type: "pattern", ...p as object })),
+        ];
+      }
+
+      if (args.keyword) {
+        const kw = args.keyword.toLowerCase();
+        const kwGuidelines = guidelines.guidelines.filter(
+          (g: { title: string; text: string; category: string }) =>
+            g.title.toLowerCase().includes(kw) ||
+            g.text.toLowerCase().includes(kw) ||
+            g.category.toLowerCase().includes(kw),
+        );
+        const kwPatterns = patterns.patterns.filter(
+          (p: { title: string; description: string }) =>
+            p.title.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw),
+        );
+        results = [
+          ...results,
+          ...kwGuidelines.map((g: unknown) => ({ type: "guideline", ...g as object })),
+          ...kwPatterns.map((p: unknown) => ({ type: "pattern", ...p as object })),
+        ];
+      }
+
+      if (results.length === 0) {
+        return { content: [{ type: "text" as const, text: "No matching guidelines or patterns found." }] };
+      }
+
+      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
+    },
+  );
+}
+
+function createRunShiplintTool(projectPath: string) {
+  return tool(
+    "run_shiplint",
+    "Run ShipLint automated scanner on the project. Returns structured JSON with Info.plist data, permissions, entitlements, privacy manifest, and static rule check results.",
+    { path: z.string().optional().describe("Project path (defaults to current project)") },
+    async () => {
+      const result = runShiplintScan(projectPath);
+      if (result.ok) {
+        return { content: [{ type: "text" as const, text: result.output }] };
+      }
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `${result.error}\n\nShipLint is not available. Use read_project_file to manually inspect project files instead.`,
+          },
+        ],
+      };
+    },
+  );
+}
+
 export async function runTargetedReview(
-  metadata: ProjectMetadata,
+  projectPath: string,
   flaggedGuidelines: string[],
   apiKey: string,
 ): Promise<Finding[]> {
-  const projectInfo = formatMetadataForAgent(metadata);
+  const absPath = path.resolve(projectPath);
   const guidelineList = flaggedGuidelines.join(", ");
 
   const targetedSystemPrompt = `You are ShipAgent, an expert iOS App Store review analyzer.
@@ -73,6 +193,11 @@ export async function runTargetedReview(
 You are performing a TARGETED re-review. Only check the following specific guidelines: ${guidelineList}
 
 Do NOT perform a full scan. Only verify whether the previously flagged issues have been fixed.
+
+## Process
+1. Run ShipLint to scan the project for current state
+2. Use read_project_file if you need to inspect specific files
+3. Check only the listed guidelines
 
 ## Scoring Guidelines
 - 🔴 HIGH RISK (severity "high", confidence 80-100%): Pattern clearly matches a known rejection case
@@ -98,90 +223,35 @@ After checking each flagged guideline, output ONLY a JSON code block:
 
 Only include findings for the guidelines listed above. Be precise — check if the specific issues were actually resolved.`;
 
-  // Reuse same MCP tools as full review (read-only)
-  const readProjectFile = tool(
-    "read_project_file",
-    "Read the contents of a file from the iOS project being reviewed. Use relative paths from the project root.",
-    { file_path: z.string().describe("Path to the file relative to the project root") },
-    async (args) => {
-      const fullPath = path.resolve(metadata.projectPath, args.file_path);
-      if (!fullPath.startsWith(metadata.projectPath)) {
-        return { content: [{ type: "text" as const, text: "Error: Path is outside the project directory" }] };
-      }
-      try {
-        const content = fs.readFileSync(fullPath, "utf-8");
-        const truncated = content.length > 50000 ? content.slice(0, 50000) + "\n[...truncated]" : content;
-        return { content: [{ type: "text" as const, text: truncated }] };
-      } catch (e) {
-        return { content: [{ type: "text" as const, text: `Error reading file: ${(e as Error).message}` }] };
-      }
-    },
-  );
-
-  const queryKb = tool(
-    "query_kb",
-    "Query the rejection knowledge base for known patterns. Search by guideline ID or keyword.",
-    {
-      guideline_id: z.string().optional().describe("Guideline ID to look up"),
-      keyword: z.string().optional().describe("Keyword to search patterns"),
-    },
-    async (args) => {
-      let results: unknown[] = [];
-      if (args.guideline_id) {
-        const gid = args.guideline_id;
-        const matchingGuidelines = guidelines.guidelines.filter(
-          (g: { id: string }) => g.id === gid || g.id.startsWith(gid),
-        );
-        const matchingPatterns = patterns.patterns.filter(
-          (p: { guideline: string }) => p.guideline === gid || p.guideline.startsWith(gid),
-        );
-        results = [...matchingGuidelines.map((g: unknown) => ({ type: "guideline", ...g as object })), ...matchingPatterns.map((p: unknown) => ({ type: "pattern", ...p as object }))];
-      }
-      if (args.keyword) {
-        const kw = args.keyword.toLowerCase();
-        const kwGuidelines = guidelines.guidelines.filter(
-          (g: { title: string; text: string; category: string }) =>
-            g.title.toLowerCase().includes(kw) || g.text.toLowerCase().includes(kw) || g.category.toLowerCase().includes(kw),
-        );
-        const kwPatterns = patterns.patterns.filter(
-          (p: { title: string; description: string }) =>
-            p.title.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw),
-        );
-        results = [...results, ...kwGuidelines.map((g: unknown) => ({ type: "guideline", ...g as object })), ...kwPatterns.map((p: unknown) => ({ type: "pattern", ...p as object }))];
-      }
-      if (results.length === 0) {
-        return { content: [{ type: "text" as const, text: "No matching guidelines or patterns found." }] };
-      }
-      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
-    },
-  );
+  const readProjectFile = createReadProjectFileTool(absPath);
+  const queryKb = createQueryKbTool();
+  const runShiplint = createRunShiplintTool(absPath);
 
   const mcpServer = createSdkMcpServer({
     name: "shipagent-tools",
     version: "0.1.0",
-    tools: [readProjectFile, queryKb],
+    tools: [readProjectFile, queryKb, runShiplint],
   });
 
-  const prompt = `Perform a TARGETED re-review of this iOS project. Only check these guidelines: ${guidelineList}
+  const prompt = `Perform a TARGETED re-review of this iOS project at: ${absPath}
+Only check these guidelines: ${guidelineList}
 
-## Project Metadata
-${projectInfo}
-
-## Available Source Files
-${metadata.sourceFiles.slice(0, 50).join("\n")}
-
-Check ONLY the listed guidelines. Verify whether previous issues have been fixed.`;
+Start by running ShipLint to get the current project state, then verify whether previous issues have been fixed.`;
 
   const conversation = query({
     prompt,
     options: {
       model: "claude-sonnet-4-20250514",
       systemPrompt: targetedSystemPrompt,
-      cwd: metadata.projectPath,
+      cwd: absPath,
       maxTurns: 10,
       tools: [],
       mcpServers: { "shipagent-tools": mcpServer },
-      allowedTools: ["mcp__shipagent-tools__read_project_file", "mcp__shipagent-tools__query_kb"],
+      allowedTools: [
+        "mcp__shipagent-tools__read_project_file",
+        "mcp__shipagent-tools__query_kb",
+        "mcp__shipagent-tools__run_shiplint",
+      ],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       env: {
@@ -211,108 +281,15 @@ Check ONLY the listed guidelines. Verify whether previous issues have been fixed
 }
 
 export async function runReview(
-  metadata: ProjectMetadata,
+  projectPath: string,
   apiKey: string,
 ): Promise<Finding[]> {
-  const projectInfo = formatMetadataForAgent(metadata);
+  const absPath = path.resolve(projectPath);
 
-  // Define MCP tools
-  const readProjectFile = tool(
-    "read_project_file",
-    "Read the contents of a file from the iOS project being reviewed. Use relative paths from the project root.",
-    { file_path: z.string().describe("Path to the file relative to the project root") },
-    async (args) => {
-      const fullPath = path.resolve(metadata.projectPath, args.file_path);
-      // Security: ensure we stay within the project
-      if (!fullPath.startsWith(metadata.projectPath)) {
-        return { content: [{ type: "text" as const, text: "Error: Path is outside the project directory" }] };
-      }
-      try {
-        const content = fs.readFileSync(fullPath, "utf-8");
-        // Truncate very large files
-        const truncated = content.length > 50000 ? content.slice(0, 50000) + "\n[...truncated]" : content;
-        return { content: [{ type: "text" as const, text: truncated }] };
-      } catch (e) {
-        return { content: [{ type: "text" as const, text: `Error reading file: ${(e as Error).message}` }] };
-      }
-    },
-  );
+  const readProjectFile = createReadProjectFileTool(absPath);
+  const queryKb = createQueryKbTool();
+  const runShiplint = createRunShiplintTool(absPath);
 
-  const queryKb = tool(
-    "query_kb",
-    "Query the rejection knowledge base for known patterns. Search by guideline ID (e.g. '5.1.1') or keyword.",
-    {
-      guideline_id: z.string().optional().describe("Guideline ID to look up (e.g. '2.1', '5.1.1')"),
-      keyword: z.string().optional().describe("Keyword to search patterns (e.g. 'privacy', 'payment')"),
-    },
-    async (args) => {
-      let results: unknown[] = [];
-
-      if (args.guideline_id) {
-        const gid = args.guideline_id;
-        const matchingGuidelines = guidelines.guidelines.filter(
-          (g: { id: string }) => g.id === gid || g.id.startsWith(gid),
-        );
-        const matchingPatterns = patterns.patterns.filter(
-          (p: { guideline: string }) => p.guideline === gid || p.guideline.startsWith(gid),
-        );
-        results = [...matchingGuidelines.map((g: unknown) => ({ type: "guideline", ...g as object })), ...matchingPatterns.map((p: unknown) => ({ type: "pattern", ...p as object }))];
-      }
-
-      if (args.keyword) {
-        const kw = args.keyword.toLowerCase();
-        const kwGuidelines = guidelines.guidelines.filter(
-          (g: { title: string; text: string; category: string }) =>
-            g.title.toLowerCase().includes(kw) ||
-            g.text.toLowerCase().includes(kw) ||
-            g.category.toLowerCase().includes(kw),
-        );
-        const kwPatterns = patterns.patterns.filter(
-          (p: { title: string; description: string }) =>
-            p.title.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw),
-        );
-        results = [
-          ...results,
-          ...kwGuidelines.map((g: unknown) => ({ type: "guideline", ...g as object })),
-          ...kwPatterns.map((p: unknown) => ({ type: "pattern", ...p as object })),
-        ];
-      }
-
-      if (results.length === 0) {
-        return { content: [{ type: "text" as const, text: "No matching guidelines or patterns found." }] };
-      }
-
-      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
-    },
-  );
-
-  const runShiplint = tool(
-    "run_shiplint",
-    "Run ShipLint automated policy checker on the project. Returns scan results if ShipLint is installed, or a message that it's not available.",
-    { path: z.string().optional().describe("Project path (defaults to current project)") },
-    async () => {
-      // Check if shiplint is available
-      try {
-        const { execSync } = await import("node:child_process");
-        const result = execSync(`npx shiplint scan "${metadata.projectPath}" 2>&1`, {
-          timeout: 30000,
-          encoding: "utf-8",
-        });
-        return { content: [{ type: "text" as const, text: result }] };
-      } catch {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "ShipLint is not installed or not available. Skipping automated policy checks. Continue with manual analysis.",
-            },
-          ],
-        };
-      }
-    },
-  );
-
-  // Create MCP server with our tools
   const mcpServer = createSdkMcpServer({
     name: "shipagent-tools",
     version: "0.1.0",
@@ -321,32 +298,32 @@ export async function runReview(
 
   const prompt = `Review this iOS project for App Store rejection risks.
 
-## Project Metadata
-${projectInfo}
-
-## Available Source Files
-${metadata.sourceFiles.slice(0, 50).join("\n")}
-${metadata.sourceFiles.length > 50 ? `\n... and ${metadata.sourceFiles.length - 50} more files` : ""}
+Project path: ${absPath}
 
 ## Instructions
-1. Start by querying the knowledge base for the most common rejection categories
-2. Read any source files that might reveal issues (especially Swift files related to permissions, payments, auth)
-3. Systematically check each guideline category
-4. Return your findings as JSON
+1. **Start by running ShipLint** to get a structured scan of the project (permissions, entitlements, privacy manifest, etc.)
+2. Review ShipLint's findings — these cover static checks automatically
+3. Query the knowledge base for the most common rejection categories
+4. Use read_project_file for deeper analysis of specific files (source code for subjective checks, payment flows, authentication, etc.)
+5. Systematically check each guideline category
+6. Return your findings as JSON
 
-Begin your analysis.`;
+Begin your analysis by running ShipLint first.`;
 
-  // Run the agent
   const conversation = query({
     prompt,
     options: {
       model: "claude-sonnet-4-20250514",
       systemPrompt: buildSystemPrompt(),
-      cwd: metadata.projectPath,
+      cwd: absPath,
       maxTurns: 15,
-      tools: [], // disable built-in tools
+      tools: [],
       mcpServers: { "shipagent-tools": mcpServer },
-      allowedTools: ["mcp__shipagent-tools__read_project_file", "mcp__shipagent-tools__query_kb", "mcp__shipagent-tools__run_shiplint"],
+      allowedTools: [
+        "mcp__shipagent-tools__read_project_file",
+        "mcp__shipagent-tools__query_kb",
+        "mcp__shipagent-tools__run_shiplint",
+      ],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       env: {
@@ -361,7 +338,6 @@ Begin your analysis.`;
 
   for await (const message of conversation) {
     if (message.type === "assistant" && "message" in message) {
-      // Extract text from the assistant message
       const msg = message.message as { content?: Array<{ type: string; text?: string }> };
       if (msg.content) {
         for (const block of msg.content) {
@@ -373,7 +349,6 @@ Begin your analysis.`;
     }
   }
 
-  // Parse findings from agent output
   const { parseAgentFindings } = await import("./report.js");
   return parseAgentFindings(lastAssistantText);
 }

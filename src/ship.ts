@@ -1,7 +1,7 @@
 import * as readline from "node:readline/promises";
+import * as path from "node:path";
 import chalk from "chalk";
 import ora from "ora";
-import { readProject } from "./reader.js";
 import { runReview, runTargetedReview } from "./agent.js";
 import { runFix } from "./fix.js";
 import { formatReport } from "./report.js";
@@ -58,7 +58,8 @@ export async function ship(
   projectPath: string,
   apiKey: string,
 ): Promise<void> {
-  const resolvedPath = (await import("node:path")).resolve(projectPath);
+  const resolvedPath = path.resolve(projectPath);
+  const projectName = path.basename(resolvedPath);
 
   console.log("");
   console.log(
@@ -68,26 +69,13 @@ export async function ship(
   );
   console.log("");
 
-  // Step 1: Read project
-  const readSpinner = ora("Reading project files...").start();
-  let metadata;
-  try {
-    metadata = readProject(resolvedPath);
-    readSpinner.succeed(
-      `Found project: ${chalk.bold(metadata.projectName)} — ${metadata.sourceFiles.length} source files`,
-    );
-  } catch (e) {
-    readSpinner.fail(`Failed to read project: ${(e as Error).message}`);
-    process.exit(1);
-  }
-
-  // Step 2: Full review
+  // Step 1: Full review (ShipLint scan happens inside the agent)
   const reviewSpinner = ora(
     "Running AI review agent (this may take 1-2 minutes)...",
   ).start();
   let findings: Finding[];
   try {
-    findings = await runReview(metadata, apiKey);
+    findings = await runReview(resolvedPath, apiKey);
     reviewSpinner.succeed(`Analysis complete — ${findings.length} findings`);
   } catch (e) {
     reviewSpinner.fail(`Review failed: ${(e as Error).message}`);
@@ -102,7 +90,7 @@ export async function ship(
   while (iteration <= MAX_ITERATIONS) {
     // Display report
     displayReport(
-      metadata.projectName,
+      projectName,
       findings,
       iteration > 1 ? iteration : undefined,
     );
@@ -135,7 +123,7 @@ export async function ship(
     const fixSpinner = ora("Applying fixes...").start();
     let fixResult;
     try {
-      fixResult = await runFix(metadata, actionable, apiKey);
+      fixResult = await runFix(resolvedPath, actionable, apiKey);
       fixSpinner.succeed(
         `Applied ${fixResult.fixes.length} fix(es), skipped ${fixResult.skipped.length}`,
       );
@@ -179,11 +167,8 @@ export async function ship(
       `Re-reviewing ${flaggedGuidelines.length} guideline(s)...`,
     ).start();
 
-    // Re-read project metadata (files may have changed)
-    metadata = readProject(resolvedPath);
-
     try {
-      findings = await runTargetedReview(metadata, flaggedGuidelines, apiKey);
+      findings = await runTargetedReview(resolvedPath, flaggedGuidelines, apiKey);
       reReviewSpinner.succeed(
         `Re-review complete — ${findings.length} findings`,
       );
@@ -203,7 +188,7 @@ export async function ship(
           `\n⚠️  Max iterations (${MAX_ITERATIONS}) reached. Showing final report.`,
         ),
       );
-      displayReport(metadata.projectName, findings);
+      displayReport(projectName, findings);
     }
   }
 

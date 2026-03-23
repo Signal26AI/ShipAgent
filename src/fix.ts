@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { query, tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod/v4";
-import type { ProjectMetadata } from "./reader.js";
 import type { Finding } from "./report.js";
 import type { FixRecord } from "./state.js";
 
@@ -61,10 +60,12 @@ Begin fixing.`;
 }
 
 export async function runFix(
-  metadata: ProjectMetadata,
+  projectPath: string,
   findings: Finding[],
   apiKey: string,
 ): Promise<FixResult> {
+  const absPath = path.resolve(projectPath);
+
   // Filter to actionable findings only
   const actionable = findings.filter(
     (f) => f.severity === "high" || f.severity === "medium",
@@ -74,14 +75,14 @@ export async function runFix(
     return { fixes: [], skipped: [] };
   }
 
-  // Define MCP tools — same read tools as review + write tools
+  // Define MCP tools — read + write tools
   const readProjectFile = tool(
     "read_project_file",
     "Read the contents of a file from the iOS project. Use relative paths from the project root.",
     { file_path: z.string().describe("Path to the file relative to the project root") },
     async (args) => {
-      const fullPath = path.resolve(metadata.projectPath, args.file_path);
-      if (!fullPath.startsWith(metadata.projectPath)) {
+      const fullPath = path.resolve(absPath, args.file_path);
+      if (!fullPath.startsWith(absPath)) {
         return { content: [{ type: "text" as const, text: "Error: Path is outside the project directory" }] };
       }
       try {
@@ -102,8 +103,8 @@ export async function runFix(
       content: z.string().describe("Full content to write to the file"),
     },
     async (args) => {
-      const fullPath = path.resolve(metadata.projectPath, args.file_path);
-      if (!fullPath.startsWith(metadata.projectPath)) {
+      const fullPath = path.resolve(absPath, args.file_path);
+      if (!fullPath.startsWith(absPath)) {
         return { content: [{ type: "text" as const, text: "Error: Path is outside the project directory" }] };
       }
       try {
@@ -128,8 +129,8 @@ export async function runFix(
       new_text: z.string().describe("New text to replace with"),
     },
     async (args) => {
-      const fullPath = path.resolve(metadata.projectPath, args.file_path);
-      if (!fullPath.startsWith(metadata.projectPath)) {
+      const fullPath = path.resolve(absPath, args.file_path);
+      if (!fullPath.startsWith(absPath)) {
         return { content: [{ type: "text" as const, text: "Error: Path is outside the project directory" }] };
       }
       try {
@@ -208,7 +209,7 @@ export async function runFix(
     options: {
       model: "claude-sonnet-4-20250514",
       systemPrompt: "You are the ShipAgent Fix Agent. You fix iOS App Store compliance issues in project files. Be precise and conservative in your edits.",
-      cwd: metadata.projectPath,
+      cwd: absPath,
       maxTurns: 20,
       tools: [],
       mcpServers: { "shipagent-fix-tools": mcpServer },
