@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.example.clean-app</string>
+	<key>CFBundleName</key>
+	<string>CleanApp</string>
+	<key>CFBundleDisplayName</key>
+	<string>Clean App</string>
+	<key>MinimumOSVersion</key>
+	<string>17.0</string>
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
+		<integer>2</integer>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Take photos to document your recipes and share them with the community.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Select photos from your library to add to your recipe collection.</string>
+</dict>
+</plist>

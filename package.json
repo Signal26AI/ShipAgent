@@ -13,7 +13,9 @@
   "scripts": {
     "build": "tsc && cp -r src/kb dist/kb",
     "dev": "tsx src/cli.ts",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "ios",
@@ -27,18 +29,25 @@
   "author": "Signal26AI",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.81",
+    "@anthropic-ai/sdk": "^0.80.0",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
-    "fast-glob": "^3.3.3",
-    "ora": "^8.2.0",
-    "plist": "^3.1.0"
+    "ora": "^8.2.0"
+  },
+  "peerDependencies": {
+    "shiplint": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "shiplint": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
-    "@types/plist": "^3.0.5",
+    "shiplint": "^1.6.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.1"
   },
   "engines": {
     "node": ">=18"
