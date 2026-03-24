@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { query, tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
-import { z } from "zod/v4";
+import Anthropic from "@anthropic-ai/sdk";
 import type { Finding } from "./report.js";
 import type { FixRecord } from "./state.js";
 
@@ -14,6 +13,181 @@ export interface FixResult {
   fixes: FixRecord[];
   skipped: Array<{ guideline: string; reason: string }>;
 }
+
+// --- Tool definitions ---
+
+const fixTools: Anthropic.Tool[] = [
+  {
+    name: "read_project_file",
+    description:
+      "Read the contents of a file from the iOS project. Use relative paths from the project root.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        file_path: {
+          type: "string",
+          description: "Path to the file relative to the project root",
+        },
+      },
+      required: ["file_path"],
+    },
+  },
+  {
+    name: "write_project_file",
+    description:
+      "Write (create or overwrite) a file in the iOS project. Use relative paths from the project root.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        file_path: {
+          type: "string",
+          description: "Path to the file relative to the project root",
+        },
+        content: {
+          type: "string",
+          description: "Full content to write to the file",
+        },
+      },
+      required: ["file_path", "content"],
+    },
+  },
+  {
+    name: "edit_project_file",
+    description:
+      "Edit a file in the iOS project by replacing exact text. The old_text must match exactly (including whitespace).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        file_path: {
+          type: "string",
+          description: "Path to the file relative to the project root",
+        },
+        old_text: {
+          type: "string",
+          description: "Exact text to find and replace",
+        },
+        new_text: {
+          type: "string",
+          description: "New text to replace with",
+        },
+      },
+      required: ["file_path", "old_text", "new_text"],
+    },
+  },
+  {
+    name: "query_kb",
+    description:
+      "Query the rejection knowledge base for known patterns and fix examples. Search by guideline ID or keyword.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        guideline_id: {
+          type: "string",
+          description: "Guideline ID to look up (e.g. '2.1', '5.1.1')",
+        },
+        keyword: {
+          type: "string",
+          description: "Keyword to search patterns (e.g. 'privacy', 'payment')",
+        },
+      },
+      required: [],
+    },
+  },
+];
+
+// --- Tool execution ---
+
+function executeFixTool(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  projectPath: string,
+): string {
+  switch (toolName) {
+    case "read_project_file": {
+      const args = toolInput as { file_path: string };
+      const fullPath = path.resolve(projectPath, args.file_path);
+      if (!fullPath.startsWith(projectPath)) return "Error: Path is outside the project directory";
+      try {
+        const content = fs.readFileSync(fullPath, "utf-8");
+        return content.length > 50000 ? content.slice(0, 50000) + "\n[...truncated]" : content;
+      } catch (e) {
+        return `Error reading file: ${(e as Error).message}`;
+      }
+    }
+    case "write_project_file": {
+      const args = toolInput as { file_path: string; content: string };
+      const fullPath = path.resolve(projectPath, args.file_path);
+      if (!fullPath.startsWith(projectPath)) return "Error: Path is outside the project directory";
+      try {
+        const dir = path.dirname(fullPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(fullPath, args.content);
+        return `Successfully wrote ${args.content.length} bytes to ${args.file_path}`;
+      } catch (e) {
+        return `Error writing file: ${(e as Error).message}`;
+      }
+    }
+    case "edit_project_file": {
+      const args = toolInput as { file_path: string; old_text: string; new_text: string };
+      const fullPath = path.resolve(projectPath, args.file_path);
+      if (!fullPath.startsWith(projectPath)) return "Error: Path is outside the project directory";
+      try {
+        const content = fs.readFileSync(fullPath, "utf-8");
+        if (!content.includes(args.old_text)) {
+          return `Error: old_text not found in ${args.file_path}. Make sure it matches exactly.`;
+        }
+        fs.writeFileSync(fullPath, content.replace(args.old_text, args.new_text));
+        return `Successfully edited ${args.file_path}`;
+      } catch (e) {
+        return `Error editing file: ${(e as Error).message}`;
+      }
+    }
+    case "query_kb": {
+      const args = toolInput as { guideline_id?: string; keyword?: string };
+      let results: unknown[] = [];
+
+      if (args.guideline_id) {
+        const gid = args.guideline_id;
+        const matchingGuidelines = guidelines.guidelines.filter(
+          (g: { id: string }) => g.id === gid || g.id.startsWith(gid),
+        );
+        const matchingPatterns = patterns.patterns.filter(
+          (p: { guideline: string }) => p.guideline === gid || p.guideline.startsWith(gid),
+        );
+        results = [
+          ...matchingGuidelines.map((g: unknown) => ({ type: "guideline", ...(g as object) })),
+          ...matchingPatterns.map((p: unknown) => ({ type: "pattern", ...(p as object) })),
+        ];
+      }
+
+      if (args.keyword) {
+        const kw = args.keyword.toLowerCase();
+        const kwGuidelines = guidelines.guidelines.filter(
+          (g: { title: string; text: string; category: string }) =>
+            g.title.toLowerCase().includes(kw) ||
+            g.text.toLowerCase().includes(kw) ||
+            g.category.toLowerCase().includes(kw),
+        );
+        const kwPatterns = patterns.patterns.filter(
+          (p: { title: string; description: string }) =>
+            p.title.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw),
+        );
+        results = [
+          ...results,
+          ...kwGuidelines.map((g: unknown) => ({ type: "guideline", ...(g as object) })),
+          ...kwPatterns.map((p: unknown) => ({ type: "pattern", ...(p as object) })),
+        ];
+      }
+
+      if (results.length === 0) return "No matching guidelines or patterns found.";
+      return JSON.stringify(results, null, 2);
+    }
+    default:
+      return `Unknown tool: ${toolName}`;
+  }
+}
+
+// --- Fix prompt ---
 
 function buildFixPrompt(findings: Finding[]): string {
   return `You are ShipAgent Fix Agent. Your job is to apply fixes to an iOS project based on review findings.
@@ -59,6 +233,8 @@ After applying all fixes, output ONLY a JSON code block summarizing what you did
 Begin fixing.`;
 }
 
+// --- Public API ---
+
 export async function runFix(
   projectPath: string,
   findings: Finding[],
@@ -75,176 +251,53 @@ export async function runFix(
     return { fixes: [], skipped: [] };
   }
 
-  // Define MCP tools — read + write tools
-  const readProjectFile = tool(
-    "read_project_file",
-    "Read the contents of a file from the iOS project. Use relative paths from the project root.",
-    { file_path: z.string().describe("Path to the file relative to the project root") },
-    async (args) => {
-      const fullPath = path.resolve(absPath, args.file_path);
-      if (!fullPath.startsWith(absPath)) {
-        return { content: [{ type: "text" as const, text: "Error: Path is outside the project directory" }] };
-      }
-      try {
-        const content = fs.readFileSync(fullPath, "utf-8");
-        const truncated = content.length > 50000 ? content.slice(0, 50000) + "\n[...truncated]" : content;
-        return { content: [{ type: "text" as const, text: truncated }] };
-      } catch (e) {
-        return { content: [{ type: "text" as const, text: `Error reading file: ${(e as Error).message}` }] };
-      }
-    },
-  );
+  const client = new Anthropic({ apiKey });
+  const systemPrompt =
+    "You are the ShipAgent Fix Agent. You fix iOS App Store compliance issues in project files. Be precise and conservative in your edits.";
 
-  const writeProjectFile = tool(
-    "write_project_file",
-    "Write (create or overwrite) a file in the iOS project. Use relative paths from the project root.",
-    {
-      file_path: z.string().describe("Path to the file relative to the project root"),
-      content: z.string().describe("Full content to write to the file"),
-    },
-    async (args) => {
-      const fullPath = path.resolve(absPath, args.file_path);
-      if (!fullPath.startsWith(absPath)) {
-        return { content: [{ type: "text" as const, text: "Error: Path is outside the project directory" }] };
-      }
-      try {
-        const dir = path.dirname(fullPath);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(fullPath, args.content);
-        return { content: [{ type: "text" as const, text: `Successfully wrote ${args.content.length} bytes to ${args.file_path}` }] };
-      } catch (e) {
-        return { content: [{ type: "text" as const, text: `Error writing file: ${(e as Error).message}` }] };
-      }
-    },
-  );
+  const messages: Anthropic.MessageParam[] = [
+    { role: "user", content: buildFixPrompt(actionable) },
+  ];
 
-  const editProjectFile = tool(
-    "edit_project_file",
-    "Edit a file in the iOS project by replacing exact text. The old_text must match exactly (including whitespace).",
-    {
-      file_path: z.string().describe("Path to the file relative to the project root"),
-      old_text: z.string().describe("Exact text to find and replace"),
-      new_text: z.string().describe("New text to replace with"),
-    },
-    async (args) => {
-      const fullPath = path.resolve(absPath, args.file_path);
-      if (!fullPath.startsWith(absPath)) {
-        return { content: [{ type: "text" as const, text: "Error: Path is outside the project directory" }] };
-      }
-      try {
-        const content = fs.readFileSync(fullPath, "utf-8");
-        if (!content.includes(args.old_text)) {
-          return { content: [{ type: "text" as const, text: `Error: old_text not found in ${args.file_path}. Make sure it matches exactly.` }] };
-        }
-        const newContent = content.replace(args.old_text, args.new_text);
-        fs.writeFileSync(fullPath, newContent);
-        return { content: [{ type: "text" as const, text: `Successfully edited ${args.file_path}` }] };
-      } catch (e) {
-        return { content: [{ type: "text" as const, text: `Error editing file: ${(e as Error).message}` }] };
-      }
-    },
-  );
+  const maxTurns = 20;
 
-  const queryKb = tool(
-    "query_kb",
-    "Query the rejection knowledge base for known patterns and fix examples. Search by guideline ID or keyword.",
-    {
-      guideline_id: z.string().optional().describe("Guideline ID to look up (e.g. '2.1', '5.1.1')"),
-      keyword: z.string().optional().describe("Keyword to search patterns (e.g. 'privacy', 'payment')"),
-    },
-    async (args) => {
-      let results: unknown[] = [];
-
-      if (args.guideline_id) {
-        const gid = args.guideline_id;
-        const matchingGuidelines = guidelines.guidelines.filter(
-          (g: { id: string }) => g.id === gid || g.id.startsWith(gid),
-        );
-        const matchingPatterns = patterns.patterns.filter(
-          (p: { guideline: string }) => p.guideline === gid || p.guideline.startsWith(gid),
-        );
-        results = [
-          ...matchingGuidelines.map((g: unknown) => ({ type: "guideline", ...g as object })),
-          ...matchingPatterns.map((p: unknown) => ({ type: "pattern", ...p as object })),
-        ];
-      }
-
-      if (args.keyword) {
-        const kw = args.keyword.toLowerCase();
-        const kwGuidelines = guidelines.guidelines.filter(
-          (g: { title: string; text: string; category: string }) =>
-            g.title.toLowerCase().includes(kw) ||
-            g.text.toLowerCase().includes(kw) ||
-            g.category.toLowerCase().includes(kw),
-        );
-        const kwPatterns = patterns.patterns.filter(
-          (p: { title: string; description: string }) =>
-            p.title.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw),
-        );
-        results = [
-          ...results,
-          ...kwGuidelines.map((g: unknown) => ({ type: "guideline", ...g as object })),
-          ...kwPatterns.map((p: unknown) => ({ type: "pattern", ...p as object })),
-        ];
-      }
-
-      if (results.length === 0) {
-        return { content: [{ type: "text" as const, text: "No matching guidelines or patterns found." }] };
-      }
-
-      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
-    },
-  );
-
-  const mcpServer = createSdkMcpServer({
-    name: "shipagent-fix-tools",
-    version: "0.1.0",
-    tools: [readProjectFile, writeProjectFile, editProjectFile, queryKb],
-  });
-
-  const conversation = query({
-    prompt: buildFixPrompt(actionable),
-    options: {
+  for (let turn = 0; turn < maxTurns; turn++) {
+    const response = await client.messages.create({
       model: "claude-sonnet-4-20250514",
-      systemPrompt: "You are the ShipAgent Fix Agent. You fix iOS App Store compliance issues in project files. Be precise and conservative in your edits.",
-      cwd: absPath,
-      maxTurns: 20,
-      tools: [],
-      mcpServers: { "shipagent-fix-tools": mcpServer },
-      allowedTools: [
-        "mcp__shipagent-fix-tools__read_project_file",
-        "mcp__shipagent-fix-tools__write_project_file",
-        "mcp__shipagent-fix-tools__edit_project_file",
-        "mcp__shipagent-fix-tools__query_kb",
-      ],
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
-      env: {
-        ...process.env as Record<string, string>,
-        ANTHROPIC_API_KEY: apiKey,
-      },
-      persistSession: false,
-    },
-  });
+      max_tokens: 4096,
+      system: systemPrompt,
+      tools: fixTools,
+      messages,
+    });
 
-  let lastAssistantText = "";
+    // If done, extract text and parse
+    if (response.stop_reason === "end_turn") {
+      let text = "";
+      for (const block of response.content) {
+        if (block.type === "text") text += block.text;
+      }
+      return parseFixResult(text);
+    }
 
-  for await (const message of conversation) {
-    if (message.type === "assistant" && "message" in message) {
-      const msg = message.message as { content?: Array<{ type: string; text?: string }> };
-      if (msg.content) {
-        for (const block of msg.content) {
-          if (block.type === "text" && block.text) {
-            lastAssistantText = block.text;
-          }
+    // Handle tool calls
+    if (response.stop_reason === "tool_use") {
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      for (const block of response.content) {
+        if (block.type === "tool_use") {
+          const result = executeFixTool(block.name, block.input as Record<string, unknown>, absPath);
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: result,
+          });
         }
       }
+      messages.push({ role: "assistant", content: response.content });
+      messages.push({ role: "user", content: toolResults });
     }
   }
 
-  return parseFixResult(lastAssistantText);
+  return { fixes: [], skipped: [] };
 }
 
 function parseFixResult(agentOutput: string): FixResult {
